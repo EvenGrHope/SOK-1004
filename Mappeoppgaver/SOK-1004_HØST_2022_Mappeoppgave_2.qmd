@@ -1,0 +1,932 @@
+---
+title: "SOK-1004, høst 2022, Mappeoppgave 2"
+author: "277"
+format: pdf
+echo: true
+output: true
+editor: visual
+---
+
+## Forord
+
+*I denne mappeoppgaven skal jeg undersøke hvordan en husholdning fordeler sitt forbruksbudsjett mellom varer. Denne fordelingen kobler jeg deretter til vektene som brukes til å beregne konsumprisindeksen (KPI). Til slutt skal jeg analysere ulike måter husholdningen kan kompenseres for prisendringer. Alt som er skrevet i* rett skrift er hentet fra oppgaveteksten *og det som er skrevet i kursiv er egne ord.*
+
+```{r}
+# Sletter minnet og importerer alle pakker jeg trenger i denne mappeoppgaven.
+
+rm(list = ls())
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(rjstat))
+suppressPackageStartupMessages(library(gdata))
+suppressPackageStartupMessages(library(httr))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(janitor))
+```
+
+## Oppgave 1. Husholdningens tilpasning
+
+Vi skal se på en husholdning som fordeler sitt budsjett hver uke mellom mat (M) og andre konsumgoder (K). Preferansene til husholdningen uttrykkes gjennom en nyttefunksjon. Nivåkurvene til nyttefunksjonen kalles indifferenskurver. Anta at husholdningens nyttefunksjon er av type Cobb-Douglas.
+
+Følgende kode tegner tre indifferenskurver for nyttenivåene 4000, 4741 og 5500 (koden er hentet fra [oppgaveteksten](https://uit-sok-1004-h22.github.io/eksamen/mappe_2_h22_final.html)).
+
+```{r}
+# Vi lager oss noen tall for x-variabelen (mat).
+x <- seq(0, 10500, by = 1)
+
+# Gjør om til data frame.
+df <- data.frame(x)
+
+# Lag aksen for tegningen.
+axes_1 <- ggplot(df, aes(x))+
+  labs(title="Husholdningens tilpasning", 
+    x="Mat",
+    y="Konsumgoder")+
+  theme(axis.title = element_text(size = 20),
+        plot.title = element_text(size = 20),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"))+ 
+  coord_fixed(ratio = 1)+ 
+  scale_x_continuous(limits = c(0, 10500), expand = c(0, 0))+
+  scale_y_continuous(limits = c(0, 9000), expand = c(0, 0))
+
+
+# Vi angir noen indifferenskurver.
+I_0 <- function(x) (4000^(5/3))/x^(2/3)
+I_1 <- function(x) (4741^(5/3))/x^(2/3)
+I_2 <- function(x) (5500^(5/3))/x^(2/3)
+
+figur_1 <- axes_1 + 
+  stat_function(df,
+        fun=I_0,
+        mapping = aes()
+        ) +
+  stat_function(df,
+                fun=I_1,
+                mapping = aes()
+  ) +
+  stat_function(df,
+                fun=I_2,
+                mapping = aes()
+  )+
+  annotate("text",x=10000,y=1900, label="I_0")+
+  annotate("text",x=10000,y=2650, label="I_1")+
+  annotate("text",x=10000,y=3500, label="I_2")
+
+# Viser figuren
+figur_1
+```
+
+### Oppgave 1A
+
+*Indifferensekurvene viser de konstante nyttenivåene (U) 4000 (l_0), 4741 (l_1) og 5500 (l_2). På y-aksen ser man antall enheter konsumgoder og på x-aksen ser man antall enheter mat. Grafene viser hvilke kombinasjoner av konsumgoder og mat som gir lik nytte. Konsumenten er indifferent til hvilken kombinasjon av goder den har, så fremst nytten er den samme.*
+
+#### Hvorfor heller indifferenskurvene nedover?
+
+*Helningen til indifferenskurver kaller vi den marginale substitusjonsbrøken (MSB). MSB'en til indifferenskurvene går nedover fordi når vi tar bort noe av konsumgodene må vi gi konsumenten mer av godene mat for at konsumenten skal holde samme nyttenivå. Det vil si at når man har flere enheter konsumgoder er man fornøyd med mindre enheter mat og vice versa visst man har flere enheter mat så er konsumenten fornøyd med mindre enheter konsumgoder så lenge nytten er den samme.*
+
+#### Hvorfor er nytten størst når vi beveger oss i nordøstlig retning i figuren?
+
+*Når vi beveger oss i nordøstlig retning på figuren blir nytten større fordi konsumenten får totalt flere enheter i forskjellige kombinasjoner av både konsumgoder og mat. Altså når vi kjøper og bruker mer, øker nytten til husholdningen.*
+
+#### Hvorfor krysser ikke indifferenskurvene?
+
+*Indifferenskurvene kan ikke krysse fordi det krever at grafene har en godekombinasjon som gir samme nytte. Siden nytten er konstant, kan aldri en godekombinasjon med nyttenivå på 4000 (l_0) være lik en godekombinasjon på nyttenivå 4741 (l_1).*
+
+### Oppgave 1B
+
+Ifølge [SSBs Inntektsstatistikk for 2020](https://www.ssb.no/inntekt-og-forbruk/inntekt-og-formue/statistikk/inntekts-og-formuesstatistikk-for-husholdninger) er inntekten etter skatt for enn husholdning med en enslig forelder med barn mellom 0-17 år ca 444 700 kr pr år. La oss runde av og si at denne husholdningen har 8500kr per uke å fordele mellom mat og annet konsum. Vi normaliserer prisen på konsum til 1 kr per enhet (slik at enheter konsum er identisk med kronebeløpet brukt på konsum). Prisen på en enhet mat er 0,80 kr.
+
+#### Skriv en likning som beskriver husholdningens budsjettlinje hver uke med denne inntekten og disse prisene.
+
+*Budsjettlinjen viser hvilke kombinasjoner av goder konsumenten kan oppnå med sitt budsjett. Med informasjonen over kan vi sette det opp slik.*
+
+$$
+I = P_1X_1 + P_2X_2
+$$
+
+*Der I er inntekt per uke, P1 er pris på mat, X1 er antall enheter mat, P2 er pris på konsumgoder og X2 er antall enheter konsumgoder.*
+
+$$
+8500 = 0,8X_1 + 1X_2
+$$
+
+*Likningen er oppfylt når summen av mat og summen av konsumgoder totalt blir 8,500.*
+
+#### Hva er helningen til budsjettlinjen, og hvordan tolkes denne?
+
+*Helningen (det relative prisforholdet) til budsjettlinjen kan vi skrive som:*
+
+$$
+\frac{-P_1}{p_2}
+$$
+
+*Visst vi bruker tallene fra tidligere får vi at helningen på budsjettlinjen er:*
+
+$$
+\frac{-0,8}{1} = -0,8
+$$
+
+*Helningen på grafen viser hvor mye konsumenten må gi opp av det ene gode for å få en ekstra enhet av det andre godet. I denne situasjonen må altså konsumenten gi opp f.eks. 0,8 konsumgoder for å få 1 ekstra enhet med mat.*
+
+### Oppgave 1C
+
+Følgende kode legger budsjettlinjen til husholdningen på figuren med indifferenskurvene (koden er hentet fra [oppgaveteksten](https://uit-sok-1004-h22.github.io/eksamen/mappe_2_h22_final.html)).
+
+```{r}
+# Legger budsjettlinjen på figuren med indifferenskurvene.
+bud_1 <- function(x) 8500-0.8*x
+figur_2 <- figur_1+
+  stat_function(df,fun=bud_1, mapping = aes(), color = "red")+
+annotate("text",x=8000,y=1000, label="bud_1", color = "red")
+
+# Viser figuren
+figur_2
+```
+
+*På figuren over kan vi se samme indifferenskurver som i forrige oppgave, men denne gangen er det lagt på en budsjettlinje. Område under (mot sørvest) budsjettlinjen kaller vi mulighetsområdet og det viser alle kombinasjoner av goder konsumenten har råd til. Budsjettlinjen viser også hvor mye nytte man må gi opp for å få en ekstra enhet av konsumgoder eller mat.*
+
+#### Vis i figuren husholdningens optimale tilpasning. Forklar hvorfor dette er en optimal tilpasning.
+
+*For å finne den optimale tilpasningen i figuren må vi vite hvor mye dyrere konsumgoder er enn mat. Vi vet fra tidligere oppgaver at mat koster 0.8 kr og at konsumgoder koster 1 kr. Da ser vi at konsumgoder er 20% dyrere enn mat. Det vil si at man bruker 20% mer kapital for å kjøpe en enhet konsumgoder i forhold til mat.*
+
+```{r}
+# Tegner en pil som viser optimal tilpasning.
+figur_3 <- figur_2 +
+    geom_segment(aes(x = 2000, y = 4600, xend = 4250, yend = 5100),
+               arrow = arrow(length = unit(0.25, "cm")))+
+  annotate("text",x = 1700,y = 4400, 
+           label="op_tilpasning")
+
+# Viser figuren
+figur_3
+```
+
+*Optimal tilpasning er det punktet konsumenten har høyest mulig nytte gitt sitt budsjett. Det vil si at konsumenten tilpasser seg der den ytterste mulige indifferenskurvene tangerer budsjettlinjen.*
+
+*Konsumenten ønsker å være så langt opp (nordøst) som mulig fordi det er høyest mulig nytte, men begrenses av budsjettlinjen. Konsumenten i dette tilfelle kan også ligge på store deler av l_0 grafen eller de uendelig mange indifferenskurvene mellom l_1 og origo, men det ønsker ikke konsumenten siden det er lavere nytte. Dette forutsetter at konsumenten brukere hele budsjettet.*
+
+#### Det viser seg at i en optimal tilpasning kjøper denne husholdningen 5100 enheter konsumgoder og 4250 enheter mat. Hvilken andel av husholdningens inntekt brukes på konsum og på mat?
+
+*Vi må starte med å finne ut hvor mange kroner husholdningen bruker total på mat og konsumgoder. Fra tidligere oppgaver vet vi at konsumgoder koster 1 kr og mat koster 0,8 kr.*
+
+$$
+F = P*X
+$$
+
+*Der F er forbruk, P er pris og X er gode.*
+
+$$
+5100 = 1 * 5100
+$$
+
+*Husholdningen bruker totalt 5.100 kr på konsumgoder med optimal tilpasning.*
+
+$$
+3400 = 0,8 * 4250
+$$
+
+*Husholdningen bruker totalt 3.400 kr på mat med optimal tilpasning.*
+
+$$
+8500 = 5100 + 3400
+$$
+
+*Husholdningen bruker totalt 8.500 kr på goder i løpet av en uke.*
+
+*For å finne hvilken andel husholdningen bruker på konsumgoder og mat, deler vi forbruke på godene på totalsummen på goder og ganger med 100(%).*
+
+$$
+\frac{X}{F} * 100
+$$
+
+*Der X er forbruk på godene og F er total forbruke på goder i løpet av en uke*
+
+$$
+\frac{5100}{8500}*100 = 60
+$$
+
+*Husholdningen bruker 60% av budsjettet sitt på konsumgoder med optimal tilpasning.*
+
+$$
+\frac{3400}{8500} * 100 = 40
+$$
+
+*Husholdningen bruker 40% av budsjettet sitt på mat med optimal tilpasning.*
+
+## Oppgave 2. Budsjettandeler og vekter i Konsumprisindeksen (KPI)
+
+[Tabell 03013](https://www.ssb.no/statbank/table/03013/) på SSB inneholder vekter som brukes til å beregne konsumprisindeksen (KPI). Se [Case 3](https://uit-sok-1004-h22.github.io/case.html) for hvordan KPI beregnes. Fra denne tabellen velg *Statistikkvariabel*: Konsumprisindeks (vekter), *Måned*: 1999M01-2022M09, *Konsumgruppe*: Hovedgruppenivå: 01 Matvarer og alkoholfrie drikkevarer. Last ned disse dataene ved hjelp av en JSON spørring. Lag en figur som viser utviklingen til disse vektene over tid. Gi figuren en passende tittel, benevning av aksene og legende. Kommentér figuren.
+
+[Tabell 10235](https://www.ssb.no/statbank/table/10235) på SSB gir blant annet andelen av forbruksutgift brukt på forskjellige varer fra Forbruksundersøkelsen (FBU). Fra denne tabellen velg *Statistikkvariabel*: Andel av forbruksutgift i alt (prosent), År: Velg alle, *Vare- og tjenestegruppe*: Hovedgruppenivå: 01 Matvarer og alkoholfrie drikkevarer. Last ned disse dataene ved hjelp av en JSON spørring.
+
+Vi skal sammenlikne disse seriene. For å gjøre dette må du transformere den første serien (I) til årlige observasjoner (beskriv hvordan du velger å gjøre dette), og (II) til prosent (fra promille). Plott seriene på samme figur med passende tittel, benevning på aksene, og legende.
+
+```{r, echo=FALSE}
+# Henter data til serie 1 fra tabellen til ssb.
+url_1 <- "https://data.ssb.no/api/v0/no/table/03013/"
+
+query_1 <-  '{
+  "query": [
+    {
+      "code": "Konsumgrp",
+      "selection": {
+        "filter": "vs:CoiCop2016niva2",
+        "values": [
+          "01"
+        ]
+      }
+    },
+    {
+      "code": "ContentsCode",
+      "selection": {
+        "filter": "item",
+        "values": [
+          "KpiVektMnd"
+        ]
+      }
+    },
+    {
+      "code": "Tid",
+      "selection": {
+        "filter": "item",
+        "values": [
+          "1999M01",
+          "1999M02",
+          "1999M03",
+          "1999M04",
+          "1999M05",
+          "1999M06",
+          "1999M07",
+          "1999M08",
+          "1999M09",
+          "1999M10",
+          "1999M11",
+          "1999M12",
+          "2000M01",
+          "2000M02",
+          "2000M03",
+          "2000M04",
+          "2000M05",
+          "2000M06",
+          "2000M07",
+          "2000M08",
+          "2000M09",
+          "2000M10",
+          "2000M11",
+          "2000M12",
+          "2001M01",
+          "2001M02",
+          "2001M03",
+          "2001M04",
+          "2001M05",
+          "2001M06",
+          "2001M07",
+          "2001M08",
+          "2001M09",
+          "2001M10",
+          "2001M11",
+          "2001M12",
+          "2002M01",
+          "2002M02",
+          "2002M03",
+          "2002M04",
+          "2002M05",
+          "2002M06",
+          "2002M07",
+          "2002M08",
+          "2002M09",
+          "2002M10",
+          "2002M11",
+          "2002M12",
+          "2003M01",
+          "2003M02",
+          "2003M03",
+          "2003M04",
+          "2003M05",
+          "2003M06",
+          "2003M07",
+          "2003M08",
+          "2003M09",
+          "2003M10",
+          "2003M11",
+          "2003M12",
+          "2004M01",
+          "2004M02",
+          "2004M03",
+          "2004M04",
+          "2004M05",
+          "2004M06",
+          "2004M07",
+          "2004M08",
+          "2004M09",
+          "2004M10",
+          "2004M11",
+          "2004M12",
+          "2005M01",
+          "2005M02",
+          "2005M03",
+          "2005M04",
+          "2005M05",
+          "2005M06",
+          "2005M07",
+          "2005M08",
+          "2005M09",
+          "2005M10",
+          "2005M11",
+          "2005M12",
+          "2006M01",
+          "2006M02",
+          "2006M03",
+          "2006M04",
+          "2006M05",
+          "2006M06",
+          "2006M07",
+          "2006M08",
+          "2006M09",
+          "2006M10",
+          "2006M11",
+          "2006M12",
+          "2007M01",
+          "2007M02",
+          "2007M03",
+          "2007M04",
+          "2007M05",
+          "2007M06",
+          "2007M07",
+          "2007M08",
+          "2007M09",
+          "2007M10",
+          "2007M11",
+          "2007M12",
+          "2008M01",
+          "2008M02",
+          "2008M03",
+          "2008M04",
+          "2008M05",
+          "2008M06",
+          "2008M07",
+          "2008M08",
+          "2008M09",
+          "2008M10",
+          "2008M11",
+          "2008M12",
+          "2009M01",
+          "2009M02",
+          "2009M03",
+          "2009M04",
+          "2009M05",
+          "2009M06",
+          "2009M07",
+          "2009M08",
+          "2009M09",
+          "2009M10",
+          "2009M11",
+          "2009M12",
+          "2010M01",
+          "2010M02",
+          "2010M03",
+          "2010M04",
+          "2010M05",
+          "2010M06",
+          "2010M07",
+          "2010M08",
+          "2010M09",
+          "2010M10",
+          "2010M11",
+          "2010M12",
+          "2011M01",
+          "2011M02",
+          "2011M03",
+          "2011M04",
+          "2011M05",
+          "2011M06",
+          "2011M07",
+          "2011M08",
+          "2011M09",
+          "2011M10",
+          "2011M11",
+          "2011M12",
+          "2012M01",
+          "2012M02",
+          "2012M03",
+          "2012M04",
+          "2012M05",
+          "2012M06",
+          "2012M07",
+          "2012M08",
+          "2012M09",
+          "2012M10",
+          "2012M11",
+          "2012M12",
+          "2013M01",
+          "2013M02",
+          "2013M03",
+          "2013M04",
+          "2013M05",
+          "2013M06",
+          "2013M07",
+          "2013M08",
+          "2013M09",
+          "2013M10",
+          "2013M11",
+          "2013M12",
+          "2014M01",
+          "2014M02",
+          "2014M03",
+          "2014M04",
+          "2014M05",
+          "2014M06",
+          "2014M07",
+          "2014M08",
+          "2014M09",
+          "2014M10",
+          "2014M11",
+          "2014M12",
+          "2015M01",
+          "2015M02",
+          "2015M03",
+          "2015M04",
+          "2015M05",
+          "2015M06",
+          "2015M07",
+          "2015M08",
+          "2015M09",
+          "2015M10",
+          "2015M11",
+          "2015M12",
+          "2016M01",
+          "2016M02",
+          "2016M03",
+          "2016M04",
+          "2016M05",
+          "2016M06",
+          "2016M07",
+          "2016M08",
+          "2016M09",
+          "2016M10",
+          "2016M11",
+          "2016M12",
+          "2017M01",
+          "2017M02",
+          "2017M03",
+          "2017M04",
+          "2017M05",
+          "2017M06",
+          "2017M07",
+          "2017M08",
+          "2017M09",
+          "2017M10",
+          "2017M11",
+          "2017M12",
+          "2018M01",
+          "2018M02",
+          "2018M03",
+          "2018M04",
+          "2018M05",
+          "2018M06",
+          "2018M07",
+          "2018M08",
+          "2018M09",
+          "2018M10",
+          "2018M11",
+          "2018M12",
+          "2019M01",
+          "2019M02",
+          "2019M03",
+          "2019M04",
+          "2019M05",
+          "2019M06",
+          "2019M07",
+          "2019M08",
+          "2019M09",
+          "2019M10",
+          "2019M11",
+          "2019M12",
+          "2020M01",
+          "2020M02",
+          "2020M03",
+          "2020M04",
+          "2020M05",
+          "2020M06",
+          "2020M07",
+          "2020M08",
+          "2020M09",
+          "2020M10",
+          "2020M11",
+          "2020M12",
+          "2021M01",
+          "2021M02",
+          "2021M03",
+          "2021M04",
+          "2021M05",
+          "2021M06",
+          "2021M07",
+          "2021M08",
+          "2021M09",
+          "2021M10",
+          "2021M11",
+          "2021M12",
+          "2022M01",
+          "2022M02",
+          "2022M03",
+          "2022M04",
+          "2022M05",
+          "2022M06",
+          "2022M07",
+          "2022M08",
+          "2022M09"
+        ]
+      }
+    }
+  ],
+  "response": {
+    "format": "json-stat2"
+  }
+}'
+
+hent_indeks.tmp_1 <- url_1 %>%
+  POST(body = query_1, encode = "json")
+
+df_1 <-  hent_indeks.tmp_1 %>%
+  content("text") %>%
+  fromJSONstat() %>%
+  as_tibble()
+```
+
+```{r}
+# Rydder i dataen med å lage anstendige tidsserier, nye verdier og nye navn.
+df_1_copy <- df_1 %>%
+  separate(måned, into=c("year", "month"), sep="M") %>%
+  mutate(dato = ymd(paste(year, month, "1"))) %>%
+  mutate(year = NULL) %>%
+  mutate(month = NULL) %>%
+  mutate(dato = as.Date(dato)) %>%
+  rename("verdi" = "value")
+```
+
+```{r}
+# Plotter figuren
+df_1_copy %>%
+  ggplot(aes(x = dato, y = verdi, color = "Matvarer og alkoholfrie drikkevarer")) +
+  geom_line() +
+  labs(x = "Årstall", y = "KPI (vekter) verdi", color = "Konsumgruppe", 
+       title = "Pris utvikling på matvare og alkoholfrie drikkevarer (vekter)",
+       subtitle = "Figuren viser pris utviklingen til matvarer og alkoholfrie drikkevarer over tid med KPI (vekter). ") +
+  theme_bw()
+```
+
+*På figuren over kan vi se utviklingen av KPI vektene til matvarer og alkoholfrie drikkevarer over tid (1999 - 2022). KPI vektene er ett forholdstall mellom forbruket av de enkelte varer og samlet forbruk per husholdning. Vi kan se at KPI vektene gikk mye ned i perioden 1999-2000 og mye opp i perioden 2010-2011. Grunnen til den store nedgangen fra 1999-2000 er at SSB gikk over COICOP i august 1999 (SSB, 11.2022). Vektene før august 1999 kan ikke sammenlignes med de etter august 1999. Senere i oppgaven skal vi se nærmere på oppgangen i perioden 2010 - 2011.*
+
+```{r, echo=FALSE}
+# Henter data til serie 2 fra tabellen til ssb.
+url_2 <- "https://data.ssb.no/api/v0/no/table/10235/"
+
+query_2 <- '{
+  "query": [
+    {
+      "code": "Forbruksundersok",
+      "selection": {
+        "filter": "vs:ForbrukHushold2",
+        "values": [
+          "FB2_01"
+        ]
+      }
+    },
+    {
+      "code": "ContentsCode",
+      "selection": {
+        "filter": "item",
+        "values": [
+          "AndForbrUtg"
+        ]
+      }
+    }
+  ],
+  "response": {
+    "format": "json-stat2"
+  }
+}'
+
+
+hent_indeks.tmp_2 <- url_2 %>%
+  POST(body = query_2, encode = "json")
+
+df_2 <-  hent_indeks.tmp_2 %>%
+  content("text") %>%
+  fromJSONstat() %>%
+  as_tibble()
+```
+
+```{r}
+# Rydder i dataen med å gi nye navn
+df_2_copy <- df_2 %>%
+  rename("verdi" = "value")
+```
+
+```{r}
+# Transformerer den første serien til årlige observasjoner.
+df_1_copy_2 <- df_1 %>%
+  separate(måned, into=c("year", "month"), sep="M") %>%
+  mutate(month = NULL) %>%
+  rename("år" = "year") %>%
+  rename("verdi" = "value")
+  
+# Trekker sammen alle verdier med samme år og regner ut gjennomsnittet til verdiene.
+df_1_copy_2 <- df_1_copy_2 %>%
+  aggregate(verdi ~ år, FUN = mean)
+
+# Transformerer den første serien fra promille til prosent.
+df_1_copy_2 <- df_1_copy_2 %>%
+  mutate(verdi = verdi / 10)
+```
+
+*I kodeblokken over (steg 3) trekker jeg sammen og finner gjennomsnittsverdien med bruk av aggregate til alle verdiene i hvert enkelt år (fra mnd. til år), slik at jeg får en verdi for hvert år og kan sammenligne i kodeblokken under.*
+
+```{r}
+# Definerer hvilken informasjon jeg ønsker i figuren.
+fig <- ggplot(data = NULL, aes(år, verdi, group = 1)) +
+  geom_line(data = df_1_copy_2, color = "red") +
+  geom_line(data = df_2_copy, color = "blue") +
+  labs(x = "Årstall", y = "Verdi", title = "KPI (vekter) vs utgifter (prosent)", subtitle = "Figuren viser KPI (vekter) og utgifter (prosent) i en periode fra 1999 til 2022.") +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  theme_bw()
+
+# Viser figuren
+fig
+```
+
+1.  Hva viser figuren ?
+
+    *Figuren viser årstallene (1999 - 2022) på x-aksen og verdiene på y-aksen. Den blå grafen viser hvor store utgifter per husholdning har på matvarer og alkoholfrie drikkevarer, per år i prosent. Altså hvor mange prosent av årsinntekten en husholdning bruker på matvarer. Den blå grafen har ikke data fra etter 2009 til 2012, og etter 2012. Den røde grafen viser konsumprisindeksen (vekter) på matvarer og alkoholfrie drikkevarer, omgjort fra promille til prosent.*
+
+2.  Foreslå grunner til at disse to seriene avviker fra hverandre.
+
+    *En av grunnene til at seriene avviker fra hverandre kan være at de tar utgangspunkt i forskjellige forholdstall. Serien med KPI (vekter) blir påvirket av prisen på enkelt varer og tar utgangspunkt i samme antall varer i beregningen. Serien med utgifter (prosent) tar utgangspunkt i den totale summen av varene sett opp mot årsinntekten og ikke antall varer. Det vil si at serien med utgifter blir påvirket av flere ting, f.eks. at forbrukerne har fått høyere lønn, men kjøper samme antall matvarer, da går den prosentvise utgiften ned.*
+
+    *En annen grunn til at seriene avviker fra hverandre kan være inflasjon. SSB har i tabellen for utgifter (prosent) ikke informert om det er justert for inflasjon. Visst denne serien ikke er justert for inflasjon kan det bety at forbrukerne må bruke en større prosentandel av sin årsinntekt på matvarer, men får akkurat samme mengde som året før. Mens serien for KPI (vekter) brukes til å beregne inflasjon vil alltid være tilnærmet lik inflasjonsnivået.*
+
+3.  Hvorfor gikk KPI-vektene for matvarer mye opp mellom 2010 og 2011? Hvordan har disse vektene utviklet seg fra 2011, og hvorfor?
+
+    *I februar 2011 tok SSB i bruk nasjonalregnskapets tall for konsum i husholdningen som grunnlag for å beregne vekter i konsumprisindeksen og harmonisert konsumprisindeks (SSB, 02.2011). Det vil si at verdiene fra før 2010 og etter 2011 tar utgangspunkt i forskjellige tall i utregningen. Fra figuren over kan dette tyde på at med de nye tallene fra nasjonalregnskapet ble verdien til KPI (vekter) høyere av dette.*
+
+    *KPI vekter har siden 2011 primært gått nedover, med unntak av noen oppganger. Grunnen til dette kan være mye, men noen av grunnene kan skylles høy inflasjon, seinvirkningen fra finanskrisa i 2008 eller mer presise tall fra nasjonalregnskapet.*
+
+## Oppgave 3.
+
+Vi skal se på effekten av en prisøkning på matvarer på husholdningens tilpasning.
+
+### Oppgave 3A
+
+Husholdningen fra oppgave 1 merker at prisen på mat øker fra 0,80 kr til 0,85 kr per enhet. Tegn en figur som viser den gamle og den nye tilpasningen. For å tegne figuren i R kan det være nyttig å vite at husholdningen kjøper nå 5100 enheter konsumgoder og 4000 enheter mat i den nye tilpasningen. Lag en ryddig figur som består av to indifferenskurver og to budsjettlinjer, og merk den gamle og den nye tilpasningen i figuren.
+
+*Vi vet fra tidligere oppgaver at konsumgoder fortsatt koster 1 kr pr enhet og mat har ny pris fra 0,80 kr til 0,85 kr. I den tidligere optimale tilpasningen fikk husholdningen 5100 enheter konsumgoder og 4250 enheter mat. I den nye optimale tilpasningen får husholdningen 5100 enheter konsumgoder og 4000 enheter mat*
+
+```{r, warning = FALSE}
+# Lager den gammle og nye indifferenskurven på en begrenset figur.
+axes_2 <- ggplot(df, aes(x))+
+  labs(title="Husholdningens nye tilpasning", 
+    x="Mat",
+    y="Konsumgoder")+
+  theme(axis.title = element_text(size = 20),
+        plot.title = element_text(size = 20),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"))+
+  coord_fixed(ratio = 1)+
+  scale_x_continuous(limits = c(3000, 6500), expand = c(0, 0))+
+  scale_y_continuous(limits = c(3500, 7000), expand = c(0, 0))
+
+I_3 <- function(x) (4627^(5/3))/x^(2/3)
+I_4 <- function(x) (4741^(5/3))/x^(2/3)
+
+figur_4 <- axes_2 + 
+  stat_function(df,
+        fun=I_3,
+        mapping = aes()
+        ) +
+  stat_function(df,
+                fun=I_4,
+                mapping = aes()
+  ) +
+
+  annotate("text",x=6350,y=3650, label="I_3")+
+  annotate("text",x=6350,y=4200, label="I_4")
+
+# Viser figuren
+figur_4
+```
+
+```{r, warning=FALSE}
+# Lager den gammle budsjettlinjen.
+bud_3 <- function(x) 8500-0.8*x
+figur_5 <- figur_4 +
+  stat_function(df,fun = bud_3, mapping = aes(), color = "red")+
+annotate("text", x = 9700, y = 1700, label = "bud_3", color = "red")
+
+# Lager den nye budsjettlinjen.
+bud_4 <- function(x) 8500-0.85*x
+figur_5 <- figur_5 +
+  stat_function(df, fun = bud_4, mapping = aes(), color = "green")+
+  annotate("text", x = 7500, y = 1000, label = "bud_4", color = "green")
+```
+
+```{r, warning = FALSE}
+# Merker optimal tilpasning.
+figur_6 <- figur_5 +
+    geom_segment(aes(x = 5400, y = 5550, xend = 4250, yend = 5100),
+               arrow = arrow(length = unit(0.25, "cm")))+
+  annotate("text",x = 5400,y = 5800, 
+           label="gammel_op_tilpasning")
+
+figur_6 <- figur_6 +
+    geom_segment(aes(x = 3900, y = 4600, xend = 4000, yend = 5100),
+               arrow = arrow(length = unit(0.25, "cm")))+
+  annotate("text",x = 3900,y = 4400, 
+           label="ny_op_tilpasning")
+
+# Viser figuren
+figur_6
+```
+
+### Oppgave 3B
+
+#### Vis i figuren hvordan den totale nedgangen i husholdningens konsum av mat kan dekomponeres i en inntekts- og substitusjonseffekt.
+
+```{r, warning = FALSE}
+# Lager en funksjon for den nye parallelforskyvde budsjettlinjen.
+bud_7 <- function(x) 8700-0.85*x
+
+# Paralellforskyver den nye budsjettlinjen til den teffer l_4.
+figur_7 <- figur_4 +
+    stat_function(df, fun = bud_7, mapping = aes(), color = "brown")+
+  annotate("text", x = 6000, y = 3000, label = "bud_7", color = "brown")
+
+figur_7 <- figur_7 +
+    geom_segment(aes(x = 4200, y = 6000, xend = 4200, yend = 5150),
+               arrow = arrow(length = unit(0.25, "cm")))+
+  annotate("text",x = 4200,y = 6200, 
+           label="ios_op_tilpasning")
+```
+
+```{r, warning=FALSE}
+# Legger inn punkter for ny og gammel optimal tilpasning.
+figur_7 <- figur_7+
+  geom_point(aes(x = 4250, y = 5100), color = "red") +
+  annotate("text", x = 4400, y = 5150, label = "a", color = "red") +  
+  geom_point(aes(x = 4000, y = 5100), color = "blue") +
+  annotate("text", x = 3850, y = 5050, label = "b", color = "blue")
+
+figur_7
+```
+
+*For at konsumenten skal kunne tilpasse seg til det gamle nyttenivået l_4 med samme prisforholdet som i oppgave 3A, må vi parallellforskyve den nye budsjettlinjen (fra oppgave 3A) til den tangerer indifferenskurven l_4. Bevegelsen fra punkt "a" til ios_op_tilpasning på x-aksen kaller vi substitusjonseffekten. Bevegelsen fra ios_op_tilpasning til punkt "b" på x-aksen kaller vi for inntektseffekten. Vi kan også se totaleffekten i figuren, altså bevegelsen fra punkt "a" til punkt "b" på x-aksen.*
+
+#### Myndighetene vurderer å kompensere husholdningen for prisøkningen på matvarer. Vis i figuren hvor mye inntekt husholdningen bør få tilført for å få det like bra som før prisøkningen.
+
+```{r, warning=FALSE}
+# Plotter akkurat samme figur med verdier på x og y aksen som starter på 0.
+axes_4 <- ggplot(df, aes(x))+
+  labs(title="Husholdningens nye tilpasning", 
+    x="Mat",
+    y="Konsumgoder")+
+  theme(axis.title = element_text(size = 20),
+        plot.title = element_text(size = 20),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"))+
+  coord_fixed(ratio = 1)+
+  scale_x_continuous(limits = c(0, 5000), expand = c(0, 0))+
+  scale_y_continuous(limits = c(4000, 9000), expand = c(0, 0))
+
+I_3 <- function(x) (4627^(5/3))/x^(2/3)
+I_4 <- function(x) (4741^(5/3))/x^(2/3)
+
+figur_8 <- axes_4 + 
+  stat_function(df,
+        fun=I_3,
+        mapping = aes()
+        ) +
+  stat_function(df,
+                fun=I_4,
+                mapping = aes()
+  ) +
+
+  annotate("text",x=1500,y=8500, label="I_3")+
+  annotate("text",x=2300,y=8500, label="I_4")
+
+figur_8 <- figur_8 +
+    stat_function(df, fun = bud_7, mapping = aes(), color = "brown")+
+  annotate("text", x = 6000, y = 2800, label = "bud_7", color = "brown")
+
+figur_8 <- figur_8 +
+  geom_segment(aes(x = 1000, y = 5000, xend = 0, yend = 8700),
+               arrow = arrow(length = unit(0.25, "cm")))+
+  annotate("text",x = 1800,y = 4600, 
+           label="total budsjett")
+  
+# Viser figuren.
+figur_8
+```
+
+*Vi vet fra tidligere oppgaver at konsumgoder koster 1 kr per enhet. Hvis vi tar utgangspunkt i at hele budsjettet brukes på konsumgoder i figuren over, ser vi at vi får 8700 enheter. Det vil si at husholdningen trenger 8700 kr for å ha det like bra som før prisøkningen. Så trekker vi fra ukes budsjettet husholdningen har og ender opp med hvor mye myndighetene bør tilføre husholdningen for at de skal ha det like bra som før prisøkningen.*
+
+$$
+200 = 8700-8500
+$$
+
+*Hvis myndighetene tilfører husholdningen 200 kr til ukes budsjettet klarer husholdningen å leve like bra som før prisøkningen. Den optimale tilpasningen sier da at husholdningen får litt mindre mat, men litt mer konsumgoder, og samme nytte som før økningen.*
+
+#### Beskriv med ord hvordan en Laspeyres indeks settes sammen. Vis i din figur fra 3b(ii) hvor mye inntekt husholdningen ville få fra myndighetene om denne metoden legges til grunn. Hva antas om substitusjonseffekten her?
+
+*Laspeyres indeks er en konsumprisindeks som brukes til å måle forandring i pris på varer og tjenester i forhold til en basisperiode (vekter). Indeksen brukes ofte en verdi på 100 i basisåret, der verdiene over 100 viser en økning i pris og verdiene under 100 viser en nedgang i pris.*
+
+*Laspeyres indeksen er* satt opp slik:
+
+$$
+Indeks = \frac{P_t * M_x}{P_0 * M_x} * 100
+$$
+
+*Der Pt er prisen for en enkelt vare på observasjons tidspunktet og P0 er prisen for en enkelt vare i basisperioden. Mx er mengden av varen i basisperioden.*
+
+*Visst vi bruker Laspeyres indeks på husholdningen i denne oppgaven får vi:*
+
+$$
+102.5=\frac{(0.85*4250) + (1*5100)}{(0.80*4250)+(1*5100)} * 100
+$$
+
+*For å finne ut hvor mye husholdningen bør få kompensert fra myndighetene finner vi først 1% av opprinnelig budsjett og ganger med indeksverdien, altså 102.5:*
+
+$$
+85 = \frac{8500}{100}
+$$
+
+$$
+8712.5 = 85 * 102.5
+$$
+
+*Så trekker vi fra det opprinnelige budsjettet for å finne ut hvor mye myndighetene bør kompensere, slik at husholdningen kommer opp på samme nyttenivå som før prisøkningen:*
+
+$$
+212.5 = 8712.5 - 8500
+$$
+
+*Da ser vi at myndighetene bør kompensere husholdningen med 212.5 kr.*
+
+```{r, warning = FALSE}
+# Lager en funksjon for Laspeyeres indeks justert kompensasjon.
+bud_8 <- function(x) 8712.5-0.85*x
+
+# Bruker samme figur som før bare med bruk av den nye funksjonen.
+figur_9 <- axes_4 + 
+  stat_function(df,
+        fun=I_3,
+        mapping = aes()
+        ) +
+  stat_function(df,
+                fun=I_4,
+                mapping = aes()
+  ) +
+
+  annotate("text",x=1500,y=8500, label="I_3")+
+  annotate("text",x=2500,y=8500, label="I_4")
+
+figur_9 <- figur_9 +
+    stat_function(df, fun = bud_8, mapping = aes(), color = "purple")+
+  annotate("text", x = 6000, y = 2800, label = "bud_8", color = "purple")
+
+figur_9 <- figur_9 +
+  geom_segment(aes(x = 1000, y = 5000, xend = 0, yend = 8712.5),
+               arrow = arrow(length = unit(0.25, "cm")))+
+  annotate("text",x = 1800,y = 4600, 
+           label="total budsjett")
+
+figur_9
+```
+
+#### "Siktemålet med konsumprisindeksen (KPI) er å lage en levekostnadsindeks som skal gi svar på hvilken inntektskompensasjon som er nødvendig for at en gjennomsnittlig husholdning skal kunne opprettholde sin levestandard når prisen på varer og tjenester endres" (Johannessen, 2014; 13). Basert på dine svar, hvor bra fungerer KPI som levekostnadsindeks?
+
+*Økonomiske modeller er en forenkling av virkeligheten, dette gjelder også KPI.* *Basert på mine svar vill jeg konkludere med at* *KPI kan i teorien gi en god indikasjon på hvilke inntektskompensasjoner som er nødvendig for at en gjennomsnittlig husholdning skal kunne opprettholde levestandarden sin. Men i praksis blir det mer avansert, pga. at menneskelige egenskaper som egne tanker og fristelser spiller inn.*
+
+*Ett eksempel på når myndighetene gikk inn for å kompensere husstander slik at de kunne opprettholde levestandarden sin, var når strømprisene primært i Sør-Norge var såpass høye at husstandene ikke kunne betale for strømmen i tillegg til alle andre utgifter. Utfordringene til myndighetene i denne saken er å hjelpe husstandene nokk uten å stimulere økonomien for mye slik at inflasjonen økte.*
+
+### Kildeliste
+
+Oppgaven: https://uit-sok-1004-h22.github.io/eksamen/mappe_2\_h22_final.html
+
+Grønbech-Hope, E., (2022, 23.10), Case 3, Github: https://github.com/EvenGrHope/SOK-1004_Case-3/blob/main/277_SOK1004_C3_H22.qmd
+
+Grønbech-Hope, E., (2022, 29.10), Case 4, Github: https://github.com/EvenGrHope/SOK-1004_Case-4/blob/main/SOK1004_C4_H22.qmd
+
+Gunvaldsen, K., (2012), Har salgsmåned betydning for boligprisen, UiA: https://uia.brage.unit.no/uia-xmlui/bitstream/handle/11250/135796/Oppgave%20Kristian%20Gunvaldsen.pdf?sequence=1&isAllowed=y
+
+Gramstad, A. R., (2013, 18.10), Indifferenskruver, nyttefunksjoner og nyttemaksimering, UiO: https://www.uio.no/studier/emner/sv/oekonomi/ECON1210/h13/notater/nytte_og_indiff.pdf
+
+Clark, D. J., (2022), En forsmak på konsumentteori, UiT: https://uit.cloud.panopto.eu/Panopto/Pages/Viewer.aspx?id=2e5b1cae-abdb-4d14-acc5-af3f00920720
+
+Kløw, E., (2020, 04.04), Budsjettbetingelse og indifferenskurve, Youtube: https://www.youtube.com/watch?v=Zq43ZAbyouE
+
+CFI Team, (2022, 28.04), Laspeyres price index, Corpratefinanceinstitute: https://corporatefinanceinstitute.com/resources/economics/laspeyres-price-index/
+
+Gressnes, T. (2022, 17.03), Inntekts- og substitusjonseffekten, Youtube: https://www.youtube.com/watch?v=OZfXKQiX_x8
+
+SSB, (2020), Vekter i KPI, SSB: https://www.ssb.no/a/metadata/conceptvariable/vardok/2756/nb
+
+SSB, (2011, 10.02), Ny vektkilde for konsumprisindeksen, SSB: https://www.ssb.no/priser-og-prisindekser/artikler-og-publikasjoner/ny-vektkilde-for-konsumprisindeksen

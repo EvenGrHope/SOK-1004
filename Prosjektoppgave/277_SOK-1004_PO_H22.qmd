@@ -1,0 +1,444 @@
+---
+title: "SOK-1004, høst 2022, Prosjektoppgave"
+author: "277"
+format: pdf
+echo: true
+output: true
+editor: visual
+---
+
+# Forord
+
+*Til besvarelsen er det lagt ved en PDF-fil som inneholder hvordan dataen er hentet inn og rydding i dataen. Jeg har valgt å ikke ta med disse kodene i denne besvarelsen for ett ryddigere resultat. Alle kodeblokkene i oppgave 1 og 2 er hentet fra oppgaveteksten. Alt som er skrevet i kursiv er skrevet av meg, mens alt som er skrevet i* rett tekst *er fra oppgaveteksten.*
+
+```{r, output = FALSE, Warning = FALSE}
+
+# Laster inn pakker
+rm(list=ls()) 
+library(tidyverse)
+library(ggthemes)
+library(openxlsx)
+library(ggpubr)
+library(rjstat)
+library(gdata)
+library(httr)
+library(lubridate)
+library(janitor)
+
+# Koden er hentet fra oppgaveteksten.
+# Henter data
+url <- "https://modals.li/downloads/gini_series_norway.xlsx"
+
+df_gini <- url %>%  
+  read.xlsx(sheet=1) %>% 
+  as_tibble()
+
+df_gini_navn <- df_gini %>% 
+  names()
+
+df_gini<- df_gini %>%
+  pivot_longer(!year,
+               names_to = "var", 
+               values_to = "verdi")
+
+# Koden er hentet fra oppgaveteksten.
+# Henter data
+url <- "https://github.com/uit-sok-1004-h22/uit-sok-1004-h22.github.io/blob/main/rkode/inntektsandeler.xlsx?raw=true"
+  
+df_andeler <- url %>%  
+  read.xlsx() %>% 
+  as_tibble()  
+
+df_andeler_navn <- df_gini %>% 
+  names()
+
+df_andeler <- df_andeler %>%
+  pivot_longer(!year,
+               names_to = "var", 
+               values_to = "verdi")
+
+df_andeler <- df_andeler %>% 
+  filter(year>=1875)
+
+# Koden er hentet fra oppgaveteksten.
+# Henter data
+url <- "https://github.com/uit-sok-1004-h22/uit-sok-1004-h22.github.io/blob/e36b270c865e077f797e9426e32b47740f2f3847/rkode/bnp.xlsx?raw=true"
+
+df_bnp <- url %>%  
+  read.xlsx(sheet=1) %>% 
+  as_tibble()
+
+navn_BNP <- df_bnp %>% 
+  names()
+
+df_bnp <- df_bnp %>% 
+  rename(BNP = navn_BNP[2],
+         year = navn_BNP[1])
+
+df_bnp <- df_bnp %>% 
+  mutate(DLBNP = 100*(log(BNP)-lag(log(BNP))))
+
+df_bnp <- df_bnp %>% 
+  filter(year >= 1875)
+```
+
+# Oppgave I
+
+Betrakt følgende figurer.
+
+```{r, warning = FALSE}
+# Koden er hentet fra oppgaveteksten.
+df_gini %>%
+  filter(year >= 1875) %>%
+  filter(var %in% df_gini_navn[4]) %>%
+  ggplot(aes(x=year,y=verdi)) +
+  geom_line() +
+  geom_smooth() +
+  ylim(0.25,0.75) +
+  theme_bw() +
+  labs(title = "Gini-koeffisienter for inntektsfordelingen i Norge",
+       subtitle = "1875–2017. Gjennomsnitt av øvre og nedre grense.",
+       y="Gini-koeffisient",
+       x="År",
+       caption = "Kilde: Modalsli, Aaberge og Atkinson (2021)")
+```
+
+```{r, Warning = FALSE}
+# Koden er hentet fra oppgaveteksten.
+df_bnp %>%
+filter(year >= 1875) %>%
+mutate(BNP = log(BNP)) %>% 
+ggplot(aes(x=year,y=BNP)) +
+geom_line() +
+geom_smooth() +
+theme_bw() +
+labs(title = "BNP per person",
+     subtitle = "Log faste-2005 kroner. 1875-2017.",
+     y="BNP per person",
+     x="År",
+     caption = "Kilde: Norges Bank")
+```
+
+```{r, Warning = FALSE}
+# Koden er hentet fra oppgaveteksten.
+df_bnp %>%
+filter(year >= 1875) %>%
+ggplot(aes(x=year,y=DLBNP)) +
+geom_line() +
+geom_smooth() +
+theme_bw() +
+labs(title = "BNP per person",
+     subtitle = "Årlig endring. Log faste-2005 kroner. 1875-2017",
+     y="BNP per person",
+     x="År",
+     caption = "Kilde: Norges Bank")
+```
+
+**Spørsmål:** Beskriv hvordan ulikheten og veksten i inntekter utviklet seg i 1920-årene sammenlignet med øvrige perioder.
+
+*Når vi skal se på figurene over antar vi at estimatet av BNP og Gini-koeffisienten er sann.*
+
+*Først skal vi se på figuren «Gini-koeffisienter for inntektsfordelingen i Norge». Denne viser oss inntektsulikhetene i Norge mellom 1875-2017 med bruk av en Gini-koeffisient. Når vi ser på perioden fra 1920 -- 1930 var Gini-koeffisienten relativt stabil i forhold til andre perioder med en verdi som lå på rundt 0.55. Dette antyder at forskjellene i inntekt var store, men ikke forandret seg mye i forhold til andre perioder på grafen. F.eks. kan vi se at Gini scoren økte mye under første verdenskrig og sank mye under andre verdenskrig. For å sammenligne denne Gini scoren med ett land i dagens samfunn hadde Brazil en Gini score på 0.53 i 2019 og Norge en Gini score på 0.27 i 2018 (World population review, 2022).*
+
+*Når vi ser på den neste figuren med BNP per person i faste 2005 kroner mellom 1875 -- 2017, ser vi en forventet utvikling siden vi vet Norge har blitt rikere siden 1875. Når vi ser nærme på perioden 1920-1930, kan vi se at BNP per person gikk ned på starten av 1920 tallet, men økte mot slutten. Dette er sannsynligvis pga. paripolitikken som gikk ut på å gjenopprette den bestemte kursen på egen valuta mot gull som flere land hadde etablert før 1914 (Thomassen, 2020)*. *Dette betydde at man måtte begrense hvor mye penger som var i omløp og senke prisen på varer slik at valutaen ble stryket (deflasjon).*
+
+*Når vi ser på den siste figuren med årlig endring i BNP per person i faste 2005 kroner kan vi se at mellom perioden 1920 -- 1930 opplevde Norge den største nedgangen i prosent på BNP per person fra året før mellom 1875 -- 2017. Fra 1920 til 1921 gikk BNP per person ned med ca. 11,4 prosent.*
+
+*Etter å ha sett nærmere på alle figurene over vil jeg påstå at figuren med årlig endring i BNP per person i faste 2005 kroner gir det beste bilde på den økonomiske ustabiliteten i Norge i denne perioden. Fra 1920 og til etter andre verdenskrig (1945) har den årlige endringen gitt store utslag sammenlignet med før 1920 og etter 1945. Vi kan se at 1920-tallet har veldig likt mønster som 1940-tallet mtp. oppganger og nedganger. Sannsynligvis pga. første og andre verdenskrig, der økonomien har løftet seg etter disse periodene. Vi kan også se at GINI-Koeffisienten har hatt en synkende trend gjennom perioden fram til den begynte på en økende trend rundt 1970 (Oljen ?).*
+
+# Oppgave II
+
+Betrakt følgende figurer.
+
+```{r}
+# Koden er hentet fra oppgaveteksten.
+#| output: false
+
+# ny tabell hvor vi skal beregne inntekter
+df <- df_andeler 
+
+# lagrer en liste med årene hvor vi har observasjoner med inntektsandeler
+years_list <- df$year %>% 
+  unique()
+
+# wide-format er enklere
+df <- df %>% 
+  pivot_wider(names_from = var, values_from = verdi) 
+
+# ny tabell med bnp-tall for årene hvor vi har observasjoner
+df_temp <- df_bnp %>% 
+  filter(year %in% years_list)
+
+# anstendige navn
+df <- df %>%
+  rename("0-10" = "share_0_10",
+         "10-20" = "share_10_20",
+         "20-30" = "share_20_30",
+         "30-40" = "share_30_40",
+         "40-50" = "share_40_50",
+         "50-60" = "share_50_60",
+         "60-70" = "share_60_70",
+         "70-80" = "share_70_80",
+         "80-90" = "share_80_90",
+         "90-100" = "share_90_100",
+         "90-99" = "share_90_99",
+         "99-100" = "share_99_100")
+
+# lagrer navn
+df_navn <- df %>% 
+  names()
+
+df <- df %>% 
+  mutate(`0-10`=10*`0-10`*df_temp$BNP,
+         `10-20`  = (100/10)*`10-20`*df_temp$BNP,
+         `20-30`  = (100/10)*`20-30`*df_temp$BNP,
+         `30-40`  = (100/10)*`30-40`*df_temp$BNP,
+         `40-50`  = (100/10)*`40-50`*df_temp$BNP,
+         `50-60`  = (100/10)*`50-60`*df_temp$BNP,
+         `60-70`  = (100/10)*`60-70`*df_temp$BNP,
+         `70-80`  = (100/10)*`70-80`*df_temp$BNP,
+         `80-90`  = (100/10)*`80-90`*df_temp$BNP,
+         `90-100` = (100/10)*`90-100`*df_temp$BNP,
+         `90-99`  = (100/9)*`90-99`*df_temp$BNP,
+         `99-100` = (100/1)*`99-100`*df_temp$BNP,)
+
+df <- df %>%
+  pivot_longer(!year,
+               names_to = "var", 
+               values_to = "verdi")
+
+andeler <- df$var %>% 
+  unique()
+```
+
+\-
+
+```{r, warning = FALSE}
+# Koden er hentet fra oppgaveteksten.
+df %>% 
+  filter(year %in% c(1900:1930)) %>% 
+  filter(var %in% andeler[1:10]) %>% 
+  mutate(verdi=verdi/(10^5)) %>%
+  ggplot(aes(x=year,y=verdi,color=var)) +
+  geom_line(size=1.25) +
+  labs(title = "BNP per person",
+       subtitle = "Hundretusener faste 2005-kroner. Fordelt på inntektsdesiler. 1900-1930",
+       y = "BNP per person",
+       x = "År",
+       color = "Desil",
+       caption = "Kilder: Modalsli, Aaberge og Atkinson (2021), Norges Bank") +
+theme_bw() 
+
+```
+
+```{r, Warning = FALSE}
+# Koden er hentet fra oppgaveteksten.
+df %>% 
+  filter(year %in% c(1900:1930)) %>% 
+  mutate(verdi=log(verdi)) %>% 
+  filter(var %in% andeler[1:10]) %>% 
+  
+  ggplot(aes(x=year,
+             y=verdi,
+             color=var)) +
+  
+  geom_line(size=1.25) +
+  
+  labs(title = "Log BNP per person", 
+       subtitle = "Faste 2005-kroner. Fordelt på inntektsdesiler. 1900 - 1930",
+       y = "Log BNP per person",
+       x = "År",
+       color =  "Desil",
+       caption = "Kilder: Modalsli, Aaberge og Atkinson (2021), Norges Bank") +
+theme_bw() 
+```
+
+**Spørsmål:** Beskriv hvordan endringen i reelle inntekter fordelte seg på inntektsdesiler mellom 1920 og 1930.
+
+*På figurene over kan vi se inntektene til de ulike desilene i perioden 1900-1930. Figurene viser akkurat det samme, med unntak av at den andre figuren er i logaritmisk skala. Dette gjør at det er lettere å se forskjell mellom desilene med lave verdier. Vi skal derfor ta utgangspunkt i denne figuren når vi skal se på endringen i reelle inntekter.*
+
+*Vi kan se at alle desilene med unntak av de to laveste inntektsgruppene (0-10 og 10-20) falt fra 1920-1921. Etter dette kan vi se en generell økning i alle inntektsgruppene fra 1921 -- 1930 med unntak av inntektsgruppene 60-70 og 70-80. Disse to gruppene hadde enda en nedgangsperiode. 60-70 gruppen hadde en generell nedgang fra 1920 -- 1924 før de økte gjennom slutten av 1920-tallet. 70-80 gruppen sank som de andre inntektsgruppene mellom 1920-1921 før de hadde en oppgang. I 1925 -1927 hadde denne inntektsgruppen igjen en nedgangsperiode før de økte gjennom slutten av 1920-tallet. De to øverste (80-90 og 90-100) inntektsgruppene hadde minst svingninger og generell høyest økning i inntekt. Dette tyder på at inntektene til de rikeste var de mest stabile og økte mest.*
+
+*Vi kan generelt sett se en økning i alle desilgruppene med unntak av de inntektsgruppene (60-70 og 70-80) som nevnt tidligere. Dette tydere på at den reelle inntekten til folk flest økte mellom 1920-1930 på tross av de økonomiske problemene Norge hadde i denne perioden.*
+
+# Oppgave III
+
+*I denne oppgaven skal jeg presentere og beskrive to økonomiske forhold som kjennetegnet de harde 1920-årene. Jeg har valgt å skrive om arbeidsledighet og inflasjon/deflasjon. Med bakgrunn i oppgavens begrensninger blir jeg ikke å gå i dybden om børskrakket i 1929 da dette hadde størst konsekvenser for 1930-årene.*
+
+*I starten av 1920-årene opplevde Norge ett kraftig prisfall på varer og tjenester som konsekvens av inflasjonen fra første verdenskrig (1914-1918) og årene mellom 1918 -1920 (Are Tvedt, 2022). Dette førte til produksjonsinnskrenkinger, omsetningen sank og arbeidsløsheten økte. For mange hadde investert for ivrig og fikk problemer med å selge varene. Norges største næring på 1920-tallet var landbruket, der merket man krisen særlig hardt og mange gårder gikk på tvangsauksjon (Skre, 2005). Dette førte til at arbeidsledigheten blant de fagorganiserte mellom 1920 til 1921 gikk opp fra 2,3 prosent til 17,6 prosent og senere opp til over 20 prosent (Are Tvedt, 2022).*
+
+```{r}
+# Henter inn data
+url_1 <- "https://data.ssb.no/api/v0/no/table/08981/"
+
+query_1 <- '{
+  "query": [
+    {
+      "code": "Maaned",
+      "selection": {
+        "filter": "item",
+        "values": [
+          "90"
+        ]
+      }
+    },
+    {
+      "code": "Tid",
+      "selection": {
+        "filter": "item",
+        "values": [
+          "1920",
+          "1921",
+          "1922",
+          "1923",
+          "1924",
+          "1925",
+          "1926",
+          "1927",
+          "1928",
+          "1929",
+          "1930",
+          "1931",
+          "1932",
+          "1933",
+          "1934",
+          "1935",
+          "1936",
+          "1937",
+          "1938",
+          "1939",
+          "1940",
+          "1941",
+          "1942",
+          "1943",
+          "1944",
+          "1945",
+          "1946",
+          "1947",
+          "1948",
+          "1949",
+          "1950"
+        ]
+      }
+    }
+  ],
+  "response": {
+    "format": "json-stat2"
+  }
+}'
+
+hent_indeks.tmp_1 <- url_1 %>%
+  POST(body = query_1, encode = "json")
+
+df_1 <-  hent_indeks.tmp_1 %>%
+  content("text") %>%
+  fromJSONstat() %>%
+  as_tibble()
+```
+
+\-
+
+```{r}
+# Rydder i dataen
+df_1 <- df_1 %>%
+  rename("verdi" = "value")
+```
+
+\-
+
+```{r}
+# Har lastet inn data med bruk av json spørring (se pdf vedlegg).
+# Lager en figur som viser årsgjennsomnittet til KPI (2015 = 100).
+figur_1 <- ggplot(data = df_1, aes(år, verdi, group = 1)) +
+  # Legger til en blå linje for dataen.
+  geom_line(color = "blue", linewidth = 1.1) +
+  # Legger til etiketter.
+  labs(x = "Årstall", y = "KPI verdi", 
+       title = "KPI verdi mellom 1920 - 1950", 
+       subtitle = "KPI (2015 = 100) verdien mellom 1920 og 1950", 
+       caption = "Kilde: SSB") +
+  # Gjør at tallene på x-aksen ikke overlapper.
+  scale_x_discrete(guide = guide_axis(check.overlap = TRUE, n.dodge = 2)) +
+  # Velger tema
+  theme_bw()
+
+# Viser figuren.
+figur_1
+```
+
+*På figuren over kan vi se utviklingen til KPI mellom 1920 og 1950 med 2015 som basisår (SSB, 2022). Vi kan se at på starten av 1920 tallet sank KPI verdien, men fikk en opptur i perioden 1923 -1925 før den sank videre mot slutten av 1920-tallet. Denne utviklingen var en konsekvens av den bevisste deflasjonspolitikken som foregikk. Hensikten med denne deflasjonspolitikken var å gjenopprette den gamle pengeverdien opp mot gull, som før første verdenskrig og bremse den økonomiske veksten (Stoltz, 2022). Deflasjonspolitikken som foregikk i Norge, ble kalt paripolitikken. Paripolitikken gjorde at seddelmengden som var i omløp gikk ned og kronekursen gikk opp. Seddelmengden ble også mindre ved at spekulanter kjøpte opp kroner i håp om at den skulle øke. Dette gjorde at bankene måtte heve rentene og stramme inn utlånene (Daria, 2006). En av konsekvensene av denne paripolitikken var at den sannsynligvis forsterket og forverret den allerede ustabile økonomien i Norge (Thomassen, 2022).*
+
+*Denne økonomiske ustabiliteten førte til at landbruk, skogsbruk og fiskeri sektoren fikk gjeldsproblemer. Mange bønner hadde investert etter første verdenskrig og banken skulle ha pengene tilbake, samtidig som prisen på jordbruksprodukter falt raskere enn prisen på innsatsvarer i jordbruket (Kjeldstadli, 2015). Dette førte til en økning i tvangsauksjoner. I 1920 var det 742 tvangsauksjoner og bare fem år senere i 1925 var dette økt til 2547. Dette forplantet seg gjennom hele 1920-tallet der det til slutt var blitt gjort 4463 tvangsauksjoner i 1929. Til tross for dette økte bruttonasjonalprodukt jevnt fra 1921 (Are Tvedt, 2022).*
+
+*1920-tallet var først og fremst en krise på grunn av arbeidsledigheten. Det finnes flere former for arbeidsledighet og den som var mest sentral på 1920-tallet var konjunkturarbeidsledighet. Dette er en form for arbeidsledighet som opptrer i økonomiske nedgangstider (Stokke og Stoltz, 2019). Å være arbeidsledig på 1920-tallet var dramatisk fordi arbeidsledighetstrygda vi har i dag kom ikke før i 1938. Mange familier fikk halvert inntekten sin (Kjeldstadli, 2015). Arbeidsledigheten på 1920-tallet ble såpass høy fordi ett stort antall arbeidsplasser ikke kunne tilbakebetale gjelden sin og gikk konkurs. Samtidig var det svært få som var villige til å ta risiko eller hadde kapital til å starte opp nye arbeidsplasser. Dette gjaldt ikke bare private aktører, men også offentlige banker og kommuner måtte settes under administrasjon (Are Tvedt, 2022). Mot slutten av 1920-tallet var halvparten av forretningsbankene stengt og sparerne mistet innskuddene sine, for det fantes ingen garantiordninger (Daria, 2006).*
+
+```{r}
+# Siden jeg ikke finner digital statisikk på arbeidsledigheten mellom 1920 - 1930
+# lager jeg min egen df med statistikk jeg fant fra "Statistikkårsboka for  
+# kongerike Norge 1929".
+
+df_2 <- data.frame(år = c("1920","1921","1922","1923","1924",
+                          "1925","1926","1927","1928","1929","1930"),
+                   verdi = c(2.3,17.6,17.1,10.6,8.5,13.2,
+                             24.3,25.4,19.1,15.4,16.6))
+
+# Denne df inneholder gjennomsnittelig arbeidsledigheten i prosent blandt
+# fagforeningsmedlemmer mellom 1920-1930. 
+```
+
+\-
+
+```{r}
+# Har lastet inn data med bruk av min egen df (se pdf vedlegg) 
+# siden jeg ikke finner digital statistikk.
+# Lager en figur som viser arbeidsledighet.
+figur_2 <- ggplot(data = df_2, aes(år,verdi, group = 1)) +
+  # Legger til en rød linje for dataen.
+  geom_line(color = "red", linewidth = 1.1) +
+  # Legger til etiketter.
+  labs(x = "Årstall", y = "Arbeidsledighet", 
+       title = "Arbeidsledighet mellom 1920 - 1930", 
+       subtitle = "Gjennomsnittelig arbeidsledighet i prosent blandt fagforeningsmedlemmer.", 
+       caption = "Kilde: SSB (statistikkårsboka 1931, s.147)") +
+  # Gjør at tallene på x-aksen ikke overlapper.
+  scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) +
+  # Velger tema.
+  theme_bw()
+
+# Viser figuren
+figur_2
+```
+
+*På figuren over kan vi se utviklingen til den gjennomsnittlige arbeidsledigheten i prosent blant de fagorganiserte mellom 1920-1930 (SSB, statistikkårsboka 1931, s.147). Som vi har kommet fram til tidligere i oppgaven kan vi se at arbeidsledigheten gikk opp fra 2.3 til 17.6 prosent mellom 1920-1921. Etter dette gikk arbeidsledigheten ned mellom 1921-1924 før den igjen gikk opp mellom 1924-1927.*
+
+*For å kompensere for det voldsomme prisfallet vi så tidligere i oppgaven søkte jordbruk, skogbruk og fiskeriene om å slå ned lønningene (Kjeldstadli, 2015). Dette første til at 1920-årene også ble preget av harde arbeidskamper blant befolkningen som var i arbeid. I 1921 erklærte LO storstreik mot lønnsnedslag som følge av prisfallet og i 1926 - 1927 gikk et stort antall arbeidsdager tapt på grunn av arbeidskonflikter (Are Tvedt, 2022).*
+
+*Avslutningsvis kan vi si at Norge på 1920-tallet var preget av stor økonomisk ustabilitet. På ett nasjonalt nivå opplevde Norge en økonomisk vekst på tross av denne økonomiske ustabiliteten, men for en enkelt person i Norge på 1920-tallet var dette en hard periode med arbeidsledighet, økende priser, usikkerhet, mindre stabilitet og forutsigbarhet i hverdagen. I senere tid har dommen på paripolitikken vært entydig i at den var skadelig og unødvendig, og at de økonomiske og sosiale konsekvensene var store (Lie, 2022).*
+
+# Vedlegg
+
+277_SOK1004_PO_H22_PDF_VEDLEGG.pdf
+
+# Kildelist
+
+Thomassen, E. (27.09.2020). Paripolitikk. SNL. Hentet 29.11.2022 fra <https://snl.no/paripolitikk>
+
+Lie, E. (04.10.2022). Økonomisk politikk uten politikere. Norgeshistorie. Hentet 29.11.2022 fra <https://www.norgeshistorie.no/forste-verdenskrig-og-mellomkrigstiden/1610-okonomisk-politkk-uten-politikere.html>
+
+Are Tvedt, K. (22.08.2022). Norges historien fra 1905 til 1939. SNL. Hentet 29.11.2022 fra <https://snl.no/Norges_historie_fra_1905_til_1939>
+
+World population review. (2022). Gini Coefficient by country 2022. WorldPopulationReview. Hentet 29.11.2022 fra <https://worldpopulationreview.com/country-rankings/gini-coefficient-by-country>
+
+Skre, A. (21.02.2005). Arbeidskonflikter og gjeldskrise. Aftenposten. Hentet 01.12.2022 fra [https://www.aftenposten.no/norge/i/rlJam/arbeidskonflikter-og gjeldskriser](https://www.aftenposten.no/norge/i/rlJam/arbeidskonflikter-og-gjeldskriser)
+
+SSB. (2022). Konsumprisindeks (2015 = 100), etter måned, år og statistikkvariabel. SSB. Hentet 01.12.2022 fra <https://www.ssb.no/statbank/table/08981/tableViewLayout1/>
+
+Stoltz, G. (23.08.2022). Inflasjon. SSB. Hentet 01.12.2022 fra <https://snl.no/inflasjon>
+
+Kjeldstadli, K. (25.11.2015). Krisetid. De harde trettiåra?. Norgeshistorie. Hentet 01.12.2022 fra [https://www.norgeshistorie.no/forste-verdenskrig-ogmellomkrigstiden/1604-Krisetid.-De-harde-trettiara.html](https://www.norgeshistorie.no/forste-verdenskrig-og-mellomkrigstiden/1604-Krisetid.-De-harde-trettiara.html)
+
+Stokke, T.A. Stoltz, G. (13.09.2019). Arbeidsledighet. SNL. Hentet 01.12.2022 fra <https://snl.no/arbeidsledighet>
+
+SSB. (2022). Statistikk årbok for kongerike Norge 1931. SSB. Hentet 04.12.2022 fra <https://www.ssb.no/a/histstat/aarbok/1931.pdf>
+
+Daria. (16.08.2006). Norge i krise og framgang. Daria. Hentet 07.12.2022 fra <https://www.daria.no/skole/?tekst=7899>
